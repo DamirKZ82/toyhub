@@ -21,7 +21,7 @@
     },
     "android": {
       "package": "com.toyhub.app",
-      "googleServicesFile": "$GOOGLE_SERVICES_JSON",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1F7A4F"
