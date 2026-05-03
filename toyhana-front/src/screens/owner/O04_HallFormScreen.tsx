@@ -173,7 +173,7 @@ export default function HallFormScreen({ route, navigation }: Props) {
       return;
     }
     const pick = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsMultipleSelection: true,
       quality: 0.9,
       selectionLimit: 20,
