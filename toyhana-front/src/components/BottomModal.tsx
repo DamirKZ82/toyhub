@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { radii, spacing } from '@/theme';
 import { useThemeColors } from '@/theme/useThemeColors';
@@ -25,24 +25,39 @@ export function BottomModal({ visible, onClose, children }: Props) {
       statusBarTranslucent
       navigationBarTranslucent={false}
     >
+      {/* Backdrop отдельно — независимо от KAV, на весь экран */}
       <Pressable
-        style={[styles.backdrop, { backgroundColor: colors.backdrop }]}
+        style={[StyleSheet.absoluteFill, { backgroundColor: colors.backdrop }]}
         onPress={onClose}
       />
-      <View
-        style={[
-          styles.sheet,
-          { backgroundColor: colors.surface, paddingBottom: bottomPadding },
-        ]}
+
+      {/* KAV для sheet'а — поднимается с клавиатурой.
+          Внутрь ScrollView НЕ заворачиваем: дети могут содержать FlatList
+          (например, список городов в CityPicker), а вложение ScrollView+FlatList
+          одной ориентации запрещено в React Native. */}
+      <KeyboardAvoidingView
+        style={styles.kavContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        pointerEvents="box-none"
       >
-        {children}
-      </View>
+        <View
+          style={[
+            styles.sheet,
+            { backgroundColor: colors.surface, paddingBottom: bottomPadding },
+          ]}
+        >
+          {children}
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1 },
+  kavContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   sheet: {
     borderTopLeftRadius: radii.lg,
     borderTopRightRadius: radii.lg,

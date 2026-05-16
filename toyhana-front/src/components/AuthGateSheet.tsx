@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View,
+  KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from 'react-native-paper';
@@ -62,6 +62,9 @@ export function AuthGateSheet() {
     backdrop: {
       flex: 1,
       backgroundColor: cc.backdrop,
+    },
+    kavContainer: {
+      flex: 1,
       justifyContent: 'flex-end' as const,
     },
     sheet: {
@@ -225,13 +228,27 @@ export function AuthGateSheet() {
       transparent
       animationType="slide"
       onRequestClose={close}
+      statusBarTranslucent
     >
+      {/* Backdrop отдельно — независимо от KAV, занимает весь экран */}
+      <Pressable style={StyleSheet.absoluteFill} onPress={onBackdropPress}>
+        <View style={styles.backdrop} />
+      </Pressable>
+
+      {/* KAV для самого sheet'а — он поднимается с клавиатурой.
+          - На iOS: behavior="padding" сдвигает контент вверх
+          - На Android: behavior="height" уменьшает высоту контейнера, sheet остаётся видимым */}
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.kavContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        pointerEvents="box-none"
       >
-        <Pressable style={styles.backdrop} onPress={onBackdropPress}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ flexGrow: 1 }}
+          >
             <View style={styles.handle} />
             <Pressable style={styles.closeBtn} onPress={close} hitSlop={8}>
               <Icon name="close" size={22} color={c.muted} />
@@ -336,7 +353,7 @@ export function AuthGateSheet() {
             {loading && step !== 'phone' && step !== 'otp' && step !== 'profile' ? (
               <Loader />
             ) : null}
-          </Pressable>
+          </ScrollView>
         </Pressable>
       </KeyboardAvoidingView>
     </Modal>
