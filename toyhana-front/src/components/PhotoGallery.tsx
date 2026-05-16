@@ -1,8 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { Dimensions, FlatList, Image, StyleSheet, View } from 'react-native';
+import { Dimensions, FlatList, Image, Pressable, StyleSheet, View } from 'react-native';
 import { radii } from '@/theme';
 import { useThemeColors } from '@/theme/useThemeColors';
 import { API_BASE_URL } from '@/config';
+import { PhotoViewer } from './PhotoViewer';
 import type { HallPhoto } from '@/api/types';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -10,11 +11,14 @@ const { width: SCREEN_W } = Dimensions.get('window');
 export function PhotoGallery({ photos }: { photos: HallPhoto[] }) {
   const c = useThemeColors();
   const [index, setIndex] = useState(0);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const listRef = useRef<FlatList<HallPhoto>>(null);
 
   if (!photos.length) {
     return <View style={[styles.photo, { backgroundColor: c.surfaceVariant }]} />;
   }
+
+  const uris = photos.map((p) => `${API_BASE_URL}${p.file_path}`);
 
   return (
     <View>
@@ -29,11 +33,13 @@ export function PhotoGallery({ photos }: { photos: HallPhoto[] }) {
           const i = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
           setIndex(i);
         }}
-        renderItem={({ item }) => (
-          <Image
-            source={{ uri: `${API_BASE_URL}${item.file_path}` }}
-            style={[styles.photo, { backgroundColor: c.surfaceVariant }]}
-          />
+        renderItem={({ item, index: i }) => (
+          <Pressable onPress={() => { setIndex(i); setViewerOpen(true); }}>
+            <Image
+              source={{ uri: `${API_BASE_URL}${item.file_path}` }}
+              style={[styles.photo, { backgroundColor: c.surfaceVariant }]}
+            />
+          </Pressable>
         )}
       />
       <View style={styles.dotsWrap}>
@@ -44,6 +50,12 @@ export function PhotoGallery({ photos }: { photos: HallPhoto[] }) {
           />
         ))}
       </View>
+      <PhotoViewer
+        visible={viewerOpen}
+        uris={uris}
+        initialIndex={index}
+        onClose={() => setViewerOpen(false)}
+      />
     </View>
   );
 }

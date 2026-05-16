@@ -9,11 +9,12 @@ import { Screen } from '@/components/Screen';
 import { Loader } from '@/components/Loader';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { CityPicker } from '@/components/CityPicker';
+import { PhotoViewer } from '@/components/PhotoViewer';
 
 import { dictsApi, providersApi, ApiError } from '@/api';
 import type { OwnerProviderFull } from '@/api';
 import type {
-  Category, City, HallPhoto, PriceUnit, ProviderAttrType,
+  Category, City, PriceUnit, ProviderAttrType,
 } from '@/api/types';
 import { API_BASE_URL } from '@/config';
 import { dictName } from '@/utils/i18nDict';
@@ -28,6 +29,9 @@ import { KEYBOARD_TOOLBAR_ID } from '@/components/KeyboardToolbar';
 type Props = NativeStackScreenProps<ProfileStackParamList, 'ProviderForm'>;
 
 const PRICE_UNITS: PriceUnit[] = ['event', 'hour', 'person', 'day'];
+const PHOTO_LIMIT = 20;
+
+interface LocalPhoto { uri: string; name: string; type: string }
 
 export default function ProviderFormScreen({ route, navigation }: Props) {
   const styles = useStyles((c) => ({
@@ -92,10 +96,14 @@ export default function ProviderFormScreen({ route, navigation }: Props) {
   const [attrIds, setAttrIds] = useState<number[]>([]);
   const [isActive, setIsActive] = useState(true);
 
+  // Локально выбранные фото — заливаются на сервер только при сохранении.
+  const [pendingPhotos, setPendingPhotos] = useState<LocalPhoto[]>([]);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(0);
+
   const [cityOpen, setCityOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedCategory = categories.find((c) => c.id === categoryId) ?? null;
@@ -182,14 +190,24 @@ export default function ProviderFormScreen({ route, navigation }: Props) {
     setSaving(true);
     setError(null);
     try {
+      // 1) Создаём/обновляем карточку
+      let guid: string;
       if (isEdit && provider) {
         const res = await providersApi.patch(provider.guid, { ...body, is_active: isActive });
-        setProvider(res.provider);
+        guid = res.provider.guid;
       } else {
         const res = await providersApi.create(body);
-        setProvider(res.provider);
-        navigation.setParams({ providerGuid: res.provider.guid });
+        guid = res.provider.guid;
       }
+      // 2) Заливаем выбранные до сохранения фото
+      if (pendingPhotos.length) {
+        await providersApi.uploadPhotos(guid, pendingPhotos);
+      }
+      // 3) Успех → сообщение и возврат назад
+      setPendingPhotos([]);
+      Alert.alert(t('common.saved'), '', [
+        { text: t('common.ok'), onPress: () => navigation.goBack() },
+      ]);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('common.error_generic'));
     } finally {
@@ -197,34 +215,35 @@ export default function ProviderFormScreen({ route, navigation }: Props) {
     }
   };
 
-  const addPhotos = async () => {
-    if (!provider) return;
+  const existingCount = provider?.photos.length ?? 0;
+
+  const pickPhotos = async () => {
+    if (existingCount + pendingPhotos.length >= PHOTO_LIMIT) {
+      setError(t('owner.photos_limit', { limit: PHOTO_LIMIT }));
+      return;
+    }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { setError(t('owner.no_photo_access')); return; }
     const pick = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
       quality: 0.9,
-      selectionLimit: 20,
+      selectionLimit: PHOTO_LIMIT,
     });
     if (pick.canceled) return;
 
-    const files = pick.assets.map((a, i) => ({
+    const room = PHOTO_LIMIT - existingCount - pendingPhotos.length;
+    const files: LocalPhoto[] = pick.assets.slice(0, room).map((a, i) => ({
       uri: a.uri,
       name: a.fileName ?? `photo_${Date.now()}_${i}.jpg`,
       type: a.mimeType ?? 'image/jpeg',
     }));
-
-    setUploadingPhotos(true);
     setError(null);
-    try {
-      const res = await providersApi.uploadPhotos(provider.guid, files);
-      setProvider({ ...provider, photos: [...provider.photos, ...(res.items as HallPhoto[])] });
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('common.error_generic'));
-    } finally {
-      setUploadingPhotos(false);
-    }
+    setPendingPhotos((prev) => [...prev, ...files]);
+  };
+
+  const removePending = (idx: number) => {
+    setPendingPhotos((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const deletePhoto = (photoId: number) => {
@@ -271,6 +290,12 @@ export default function ProviderFormScreen({ route, navigation }: Props) {
   };
 
   if (loading) return <Screen><Loader /></Screen>;
+
+  const serverPhotos = provider?.photos ?? [];
+  const galleryUris = [
+    ...serverPhotos.map((p) => `${API_BASE_URL}${p.file_path}`),
+    ...pendingPhotos.map((p) => p.uri),
+  ];
 
   return (
     <Screen scroll>
@@ -408,41 +433,55 @@ export default function ProviderFormScreen({ route, navigation }: Props) {
       <View style={styles.photoSection}>
         <View style={styles.photoHeader}>
           <Text style={styles.label}>{t('owner.photos_label')}</Text>
-          {provider ? (
-            <Button
-              mode="text"
-              icon="plus"
-              onPress={addPhotos}
-              loading={uploadingPhotos}
-              disabled={uploadingPhotos || provider.photos.length >= 20}
-            >
-              {t('owner.add_photos')}
-            </Button>
-          ) : null}
+          <Button
+            mode="text"
+            icon="plus"
+            onPress={pickPhotos}
+            disabled={serverPhotos.length + pendingPhotos.length >= PHOTO_LIMIT}
+          >
+            {t('owner.add_photos')}
+          </Button>
         </View>
-        {!provider ? (
-          <Text style={styles.hint}>{t('owner.save_first_hint')}</Text>
+        <Text style={styles.hint}>{t('owner.photos_hint')}</Text>
+        {galleryUris.length === 0 ? (
+          <Text style={styles.hint}>{t('owner.photos_empty')}</Text>
         ) : (
-          <>
-            <Text style={styles.hint}>{t('owner.photos_hint')}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoList}>
-              {provider.photos.map((p) => (
-                <Pressable
-                  key={p.id}
-                  style={styles.photoItem}
-                  onLongPress={() => deletePhoto(p.id)}
-                >
-                  <Image
-                    source={{ uri: `${API_BASE_URL}${p.thumb_path}` }}
-                    style={styles.photoThumb}
-                  />
-                  <Pressable style={styles.photoDelete} onPress={() => deletePhoto(p.id)} hitSlop={8}>
-                    <Icon name="close" size={14} color="#FFF" />
-                  </Pressable>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoList}>
+            {serverPhotos.map((p, i) => (
+              <Pressable
+                key={`s-${p.id}`}
+                style={styles.photoItem}
+                onPress={() => { setViewerIndex(i); setViewerOpen(true); }}
+              >
+                <Image
+                  source={{ uri: `${API_BASE_URL}${p.thumb_path}` }}
+                  style={styles.photoThumb}
+                />
+                <Pressable style={styles.photoDelete} onPress={() => deletePhoto(p.id)} hitSlop={8}>
+                  <Icon name="close" size={14} color="#FFF" />
                 </Pressable>
-              ))}
-            </ScrollView>
-          </>
+              </Pressable>
+            ))}
+            {pendingPhotos.map((p, i) => (
+              <Pressable
+                key={`p-${p.uri}-${i}`}
+                style={styles.photoItem}
+                onPress={() => {
+                  setViewerIndex(serverPhotos.length + i);
+                  setViewerOpen(true);
+                }}
+              >
+                <Image source={{ uri: p.uri }} style={styles.photoThumb} />
+                <Pressable
+                  style={styles.photoDelete}
+                  onPress={() => removePending(i)}
+                  hitSlop={8}
+                >
+                  <Icon name="close" size={14} color="#FFF" />
+                </Pressable>
+              </Pressable>
+            ))}
+          </ScrollView>
         )}
       </View>
 
@@ -462,6 +501,13 @@ export default function ProviderFormScreen({ route, navigation }: Props) {
         cities={cities}
         onSelect={(cc) => setCity(cc)}
         onClose={() => setCityOpen(false)}
+      />
+
+      <PhotoViewer
+        visible={viewerOpen}
+        uris={galleryUris}
+        initialIndex={viewerIndex}
+        onClose={() => setViewerOpen(false)}
       />
     </Screen>
   );
