@@ -61,7 +61,8 @@ export default function SearchScreen({ navigation }: Props) {
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [category, setCategory] = useState<Category | null>(null);
-  const isRestaurant = category?.code === 'restaurant';
+  // Нет категории (старый бэк без /dicts/categories) — работаем как раньше: залы.
+  const isRestaurant = !category || category.code === 'restaurant';
 
   const [cities, setCities] = useState<City[]>([]);
   const [amenities, setAmenities] = useState<Amenity[]>([]);
@@ -99,20 +100,27 @@ export default function SearchScreen({ navigation }: Props) {
 
   const citySettledRef = useRef(false);
 
-  // Справочники + определение города (один раз)
+  // Справочники + определение города (один раз).
+  // Категории грузим ОТДЕЛЬНО: если эндпоинт недоступен (старый бэкенд),
+  // экран всё равно работает как поиск залов, а не остаётся пустым.
   useEffect(() => {
     (async () => {
       try {
-        const [catsResp, citiesResp, amenitiesResp] = await Promise.all([
-          dictsApi.categories(),
+        const catsResp = await dictsApi.categories();
+        if (catsResp.items.length) {
+          setCategories(catsResp.items);
+          const restaurant = catsResp.items.find((x) => x.code === 'restaurant');
+          setCategory(restaurant ?? catsResp.items[0] ?? null);
+        }
+      } catch { /* нет категорий — fallback на залы (category=null) */ }
+
+      try {
+        const [citiesResp, amenitiesResp] = await Promise.all([
           dictsApi.cities(),
           dictsApi.amenities(),
         ]);
-        setCategories(catsResp.items);
         setCities(citiesResp.items);
         setAmenities(amenitiesResp.items);
-        const restaurant = catsResp.items.find((x) => x.code === 'restaurant');
-        setCategory(restaurant ?? catsResp.items[0] ?? null);
 
         const savedRaw = await secureGet(SAVED_CITY_KEY);
         if (savedRaw) {
@@ -170,26 +178,10 @@ export default function SearchScreen({ navigation }: Props) {
   }), [city, date, guests, priceMax, tagIds, isRestaurant]);
 
   const doSearch = useCallback(async (pageToLoad: number, replace: boolean) => {
-    if (!category) return;
     if (pageToLoad === 1) setLoading(true);
     setError(null);
     try {
-      if (category.code === 'restaurant') {
-        const resp = await searchApi.halls({
-          city_id: city?.id,
-          date: date ?? undefined,
-          guests: guests ?? undefined,
-          price_max: priceMax ?? undefined,
-          amenity_ids: tagIds.length ? tagIds : undefined,
-          sort,
-          page: pageToLoad,
-          page_size: PAGE_SIZE,
-        });
-        setTotal(resp.total);
-        setPage(resp.page);
-        setHasMore(resp.page * resp.page_size < resp.total);
-        setHallItems((prev) => (replace ? resp.items : [...prev, ...resp.items]));
-      } else {
+      if (category && category.code !== 'restaurant') {
         const resp = await searchApi.providers({
           category_id: category.id,
           city_id: city?.id,
@@ -204,6 +196,21 @@ export default function SearchScreen({ navigation }: Props) {
         setPage(resp.page);
         setHasMore(resp.page * resp.page_size < resp.total);
         setProvItems((prev) => (replace ? resp.items : [...prev, ...resp.items]));
+      } else {
+        const resp = await searchApi.halls({
+          city_id: city?.id,
+          date: date ?? undefined,
+          guests: guests ?? undefined,
+          price_max: priceMax ?? undefined,
+          amenity_ids: tagIds.length ? tagIds : undefined,
+          sort,
+          page: pageToLoad,
+          page_size: PAGE_SIZE,
+        });
+        setTotal(resp.total);
+        setPage(resp.page);
+        setHasMore(resp.page * resp.page_size < resp.total);
+        setHallItems((prev) => (replace ? resp.items : [...prev, ...resp.items]));
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('common.error_generic'));
@@ -214,7 +221,7 @@ export default function SearchScreen({ navigation }: Props) {
   }, [category, city, date, guests, priceMax, tagIds, sort, t]);
 
   useEffect(() => {
-    if (!citySettledRef.current || !category) return;
+    if (!citySettledRef.current) return;
     doSearch(1, true);
   }, [category, city, date, guests, priceMax, tagIds, sort, doSearch]);
 
