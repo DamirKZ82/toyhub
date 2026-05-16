@@ -21,8 +21,8 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
       const { items } = await favoritesApi.list();
       const guids = new Set<string>();
       for (const i of items) {
-        if (i.type === 'provider') guids.add(i.provider.guid);
-        else guids.add(i.hall.guid);
+        const g = i.type === 'provider' ? i.provider?.guid : i.hall?.guid;
+        if (g) guids.add(g);
       }
       set({ guids, loaded: true });
     } catch {

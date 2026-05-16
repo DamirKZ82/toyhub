@@ -110,7 +110,9 @@ export default function FavoritesScreen({ navigation }: Props) {
     <Screen padded={false}>
       <FlatList
         data={items}
-        keyExtractor={(it) => (it.type === 'hall' ? it.hall.guid : it.provider.guid)}
+        keyExtractor={(it, idx) =>
+          (it.type === 'provider' ? it.provider?.guid : it.hall?.guid) ?? String(idx)
+        }
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={error ? <ErrorBanner message={error} /> : null}
@@ -120,14 +122,7 @@ export default function FavoritesScreen({ navigation }: Props) {
           ) : null
         }
         renderItem={({ item }) => (
-          item.type === 'hall' ? (
-            <HallCard
-              item={item}
-              isFavorite
-              onToggleFavorite={() => handleToggleHall(item.hall.guid)}
-              onPress={() => navigation.navigate('HallDetails', { hallGuid: item.hall.guid })}
-            />
-          ) : (
+          item.type === 'provider' ? (
             <ProviderCard
               item={item}
               isFavorite
@@ -135,6 +130,13 @@ export default function FavoritesScreen({ navigation }: Props) {
               onPress={() =>
                 navigation.navigate('ProviderDetails', { providerGuid: item.provider.guid })
               }
+            />
+          ) : (
+            <HallCard
+              item={item}
+              isFavorite
+              onToggleFavorite={() => handleToggleHall(item.hall.guid)}
+              onPress={() => navigation.navigate('HallDetails', { hallGuid: item.hall.guid })}
             />
           )
         )}
