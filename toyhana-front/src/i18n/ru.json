@@ -65,6 +65,7 @@
     "theme_light": "Светлая",
     "theme_dark": "Тёмная",
     "my_venues": "Мои заведения",
+    "my_providers": "Мои исполнители",
     "incoming_bookings": "Входящие заявки",
     "my_bookings": "Мои заявки",
     "logout": "Выйти"
@@ -77,7 +78,19 @@
     "results_count": "Найдено: {{count}}",
     "guests_word": "гостей",
     "city_detected": "Ваш город — {{city}}. Можно сменить",
-    "no_city_nearby": "Мы пока не работаем в вашем городе — показываем все залы"
+    "no_city_nearby": "Мы пока не работаем в вашем городе — показываем все залы",
+    "busy_badge": "Занято"
+  },
+  "provider": {
+    "attrs_label": "Специализация",
+    "contact_label": "Контакты",
+    "owner_reply_label": "Ответ исполнителя:",
+    "price_from_prefix": "от",
+    "price_negotiable": "Цена договорная",
+    "unit_event": "за мероприятие",
+    "unit_hour": "за час",
+    "unit_person": "за персону",
+    "unit_day": "за день"
   },
   "hall": {
     "description": "Описание",
@@ -119,6 +132,7 @@
     "status_rejected": "Отклонено",
     "status_cancelled": "Отменено",
     "hall_deleted": "Зал удалён",
+    "subject_deleted": "Объект удалён",
     "cancel_button": "Отменить заявку",
     "cancel_confirm_title": "Отменить заявку?",
     "cancel_confirm_text": "Это действие нельзя отменить",
@@ -241,6 +255,27 @@
     "review_reply_title": "Ответ на отзыв",
     "review_reply_label": "Ваш ответ",
     "review_reply_placeholder": "Спасибо за отзыв…",
-    "review_reply_submit": "Опубликовать"
+    "review_reply_submit": "Опубликовать",
+    "no_photo_access": "Нет доступа к фото",
+    "providers_title": "Мои исполнители",
+    "providers_empty_title": "Пока нет карточек",
+    "providers_empty_hint": "Добавьте карточку, чтобы принимать заявки",
+    "add_provider": "Добавить",
+    "provider_form_new": "Новая карточка",
+    "provider_form_edit": "Редактирование",
+    "provider_inactive": "Снято с публикации",
+    "provider_category_label": "Категория",
+    "provider_category_placeholder": "Выберите категорию",
+    "provider_name_label": "Название / имя",
+    "provider_name_placeholder": "Например: Тамада Ерлан",
+    "provider_description_label": "Описание",
+    "provider_description_placeholder": "Расскажите о себе и услугах",
+    "provider_phone_label": "Телефон для связи",
+    "provider_price_label": "Цена от, ₸",
+    "provider_price_unit_label": "Единица цены",
+    "provider_is_active_label": "Карточка опубликована",
+    "delete_provider": "Удалить карточку",
+    "delete_provider_confirm_title": "Удалить карточку?",
+    "delete_provider_confirm_text": "Фото и история заявок будут удалены. Это действие нельзя отменить."
   }
 }

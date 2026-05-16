@@ -7,6 +7,13 @@ export const reviewsApi = {
     return data;
   },
 
+  async listProvider(providerGuid: string): Promise<ReviewsResponse> {
+    const { data } = await apiClient.get<ReviewsResponse>(
+      `/providers/${providerGuid}/reviews`,
+    );
+    return data;
+  },
+
   async create(booking_guid: string, rating: number, text?: string): Promise<{ review: Review }> {
     const { data } = await apiClient.post<{ review: Review }>(
       '/reviews',

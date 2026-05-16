@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import SearchScreen from '@/screens/client/C01_SearchScreen';
 import HallDetailsScreen from '@/screens/client/C02_HallDetailsScreen';
 import BookingFormScreen from '@/screens/client/C03_BookingFormScreen';
+import ProviderDetailsScreen from '@/screens/client/C07_ProviderDetailsScreen';
 import type { SearchStackParamList } from './types';
 import { useThemeColors } from '@/theme/useThemeColors';
 
@@ -27,6 +28,7 @@ export function SearchStack() {
         options={{ title: t('search.title') }}
       />
       <Stack.Screen name="HallDetails" component={HallDetailsScreen} options={{ title: '' }} />
+      <Stack.Screen name="ProviderDetails" component={ProviderDetailsScreen} options={{ title: '' }} />
       <Stack.Screen
         name="BookingForm"
         component={BookingFormScreen}

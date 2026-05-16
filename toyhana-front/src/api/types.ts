@@ -38,6 +38,84 @@ export interface EventType {
   name_kz: string;
 }
 
+// ---------------------- Categories / Providers ----------------------
+
+export interface Category {
+  id: number;
+  code: string;
+  name_ru: string;
+  name_kz: string;
+  icon: string | null;
+  sort_order: number;
+}
+
+/** Краткая категория внутри карточки/деталей исполнителя/брони. */
+export interface CategoryBrief {
+  id: number;
+  code: string;
+  name_ru: string;
+  name_kz: string;
+}
+
+/** Атрибут исполнителя — та же форма, что и Amenity (id/code/name/icon). */
+export type ProviderAttr = Amenity;
+
+export interface ProviderAttrType extends Amenity {
+  sort_order?: number;
+  category_code?: string;
+}
+
+export type PriceUnit = 'event' | 'hour' | 'person' | 'day';
+
+export interface ProviderBrief {
+  id: number;
+  guid: string;
+  name: string;
+  description: string | null;
+  price_from: number | null;
+  price_unit: PriceUnit | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  is_active?: boolean;
+}
+
+export interface ProviderCardData {
+  provider: ProviderBrief;
+  category: CategoryBrief;
+  city: City;
+  main_photo: string | null;
+  main_thumb: string | null;
+  rating: { avg: number; count: number };
+  is_busy_on_date: boolean;
+}
+
+export interface ProviderSearchResponse {
+  items: ProviderCardData[];
+  total: number;
+  page: number;
+  page_size: number;
+  date: string | null;
+}
+
+export interface PublicProviderDetails {
+  id: number;
+  guid: string;
+  name: string;
+  description: string | null;
+  phone: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  price_from: number | null;
+  price_unit: PriceUnit | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  photos: HallPhoto[];
+  attrs: ProviderAttr[];
+  category: CategoryBrief;
+  city: City;
+}
+
 export interface Holiday {
   date: string;
   name_ru: string;
@@ -112,6 +190,19 @@ export interface HallDetails extends HallBrief {
 
 export type BookingStatus = 'pending' | 'confirmed' | 'rejected' | 'cancelled';
 
+export type SubjectType = 'hall' | 'provider';
+
+/** Унифицированный subject брони/чата — зал или исполнитель. */
+export interface BookingSubject {
+  type: SubjectType;
+  guid: string | null;
+  name: string | null;
+  /** Для зала — название заведения; для исполнителя — null. */
+  parent_name: string | null;
+  deleted: boolean;
+  category_code?: string | null;
+}
+
 export interface Booking {
   id: number;
   guid: string;
@@ -124,11 +215,18 @@ export interface Booking {
   price_at_booking: number | null;
   created_at: string;
   updated_at: string;
+  subject: BookingSubject;
   hall: {
     id: number;
     guid: string | null;
     name: string | null;
     venue_name: string | null;
+  } | null;
+  provider: {
+    id: number;
+    guid: string | null;
+    name: string | null;
+    category_code: string | null;
   } | null;
   hall_deleted: boolean;
   client?: { name: string | null; phone: string | null };
@@ -142,7 +240,9 @@ export interface CalendarDay {
 }
 
 export interface CalendarResponse {
-  hall_guid: string;
+  hall_guid?: string;
+  provider_guid?: string;
+  price_unit?: PriceUnit | null;
   month: string;
   items: CalendarDay[];
 }
@@ -168,6 +268,14 @@ export interface ReviewsResponse {
 
 // ---------------------- Favorites ----------------------
 
-export interface FavoriteItem extends HallCardData {
+export interface HallFavoriteItem extends HallCardData {
+  type: 'hall';
   favorited_at: string;
 }
+
+export interface ProviderFavoriteItem extends ProviderCardData {
+  type: 'provider';
+  favorited_at: string;
+}
+
+export type FavoriteItem = HallFavoriteItem | ProviderFavoriteItem;

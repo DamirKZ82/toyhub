@@ -265,3 +265,138 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 CREATE INDEX IF NOT EXISTS idx_chat_messages_chat ON chat_messages(chat_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_unread ON chat_messages(chat_id, sender_id) WHERE read_at IS NULL;
 
+-- =========================================================================
+-- Этап 12: Категории и исполнители (providers)
+--
+-- Рестораны (venues/halls) НЕ трогаем. Новые категории (тамада, артисты,
+-- декораторы, кейтеринг, фото-видео) — плоская сущность providers.
+-- bookings / reviews / chats / favorites становятся полиморфными:
+-- ссылаются ЛИБО на hall_id, ЛИБО на provider_id (ровно одно из двух).
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS categories (
+    id           SERIAL PRIMARY KEY,
+    code         VARCHAR(50) UNIQUE NOT NULL,
+    name_ru      VARCHAR(100) NOT NULL,
+    name_kz      VARCHAR(100) NOT NULL,
+    icon         VARCHAR(50),
+    sort_order   INT DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS providers (
+    id           SERIAL PRIMARY KEY,
+    guid         CHAR(36) UNIQUE NOT NULL,
+    owner_id     INT NOT NULL REFERENCES users(id),
+    category_id  INT NOT NULL REFERENCES categories(id),
+    city_id      INT NOT NULL REFERENCES cities(id),
+    name         VARCHAR(200) NOT NULL,
+    description  TEXT,
+    phone        VARCHAR(20),
+    latitude     DECIMAL(10, 7),
+    longitude    DECIMAL(10, 7),
+    price_from   INT,
+    price_unit   VARCHAR(20),   -- 'event' | 'hour' | 'person' | 'day'
+    is_active    BOOLEAN DEFAULT TRUE,
+    created_at   CHAR(19) NOT NULL,
+    updated_at   CHAR(19) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_providers_owner    ON providers(owner_id);
+CREATE INDEX IF NOT EXISTS idx_providers_category ON providers(category_id);
+CREATE INDEX IF NOT EXISTS idx_providers_city     ON providers(city_id);
+
+CREATE TABLE IF NOT EXISTS provider_photos (
+    id           SERIAL PRIMARY KEY,
+    provider_id  INT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+    file_path    VARCHAR(500) NOT NULL,
+    thumb_path   VARCHAR(500) NOT NULL,
+    sort_order   INT DEFAULT 0,
+    created_at   CHAR(19) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_provider_photos_provider ON provider_photos(provider_id);
+
+-- Атрибуты по категориям (паттерн hall_amenities / hall_amenity_links).
+-- Это «своя модель у категории»: для каждой категории — свой набор атрибутов
+-- (артист → певец/танцор/фокусник; кейтеринг → кухня; и т.д.). Фильтруемые в поиске.
+CREATE TABLE IF NOT EXISTS provider_attr_types (
+    id           SERIAL PRIMARY KEY,
+    category_id  INT NOT NULL REFERENCES categories(id),
+    code         VARCHAR(50) NOT NULL,
+    name_ru      VARCHAR(100) NOT NULL,
+    name_kz      VARCHAR(100) NOT NULL,
+    icon         VARCHAR(50),
+    sort_order   INT DEFAULT 0,
+    UNIQUE (category_id, code)
+);
+
+CREATE TABLE IF NOT EXISTS provider_attr_links (
+    provider_id  INT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+    attr_id      INT NOT NULL REFERENCES provider_attr_types(id),
+    PRIMARY KEY (provider_id, attr_id)
+);
+
+-- ---- Полиморфизм: bookings ----
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS provider_id INT REFERENCES providers(id);
+ALTER TABLE bookings ALTER COLUMN hall_id DROP NOT NULL;
+DO $mig$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bookings_subject_chk') THEN
+        ALTER TABLE bookings ADD CONSTRAINT bookings_subject_chk
+            CHECK ((hall_id IS NOT NULL) <> (provider_id IS NOT NULL));
+    END IF;
+END
+$mig$;
+CREATE INDEX IF NOT EXISTS idx_bookings_provider_date ON bookings(provider_id, event_date);
+
+-- ---- Полиморфизм: reviews ----
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS provider_id INT REFERENCES providers(id);
+ALTER TABLE reviews ALTER COLUMN hall_id DROP NOT NULL;
+DO $mig$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'reviews_subject_chk') THEN
+        ALTER TABLE reviews ADD CONSTRAINT reviews_subject_chk
+            CHECK ((hall_id IS NOT NULL) <> (provider_id IS NOT NULL));
+    END IF;
+END
+$mig$;
+CREATE INDEX IF NOT EXISTS idx_reviews_provider ON reviews(provider_id);
+
+-- ---- Полиморфизм: chats ----
+ALTER TABLE chats ADD COLUMN IF NOT EXISTS provider_id INT REFERENCES providers(id);
+ALTER TABLE chats ALTER COLUMN hall_id DROP NOT NULL;
+ALTER TABLE chats DROP CONSTRAINT IF EXISTS chats_hall_id_client_id_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_chats_hall_client
+    ON chats(hall_id, client_id) WHERE hall_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_chats_provider_client
+    ON chats(provider_id, client_id) WHERE provider_id IS NOT NULL;
+DO $mig$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chats_subject_chk') THEN
+        ALTER TABLE chats ADD CONSTRAINT chats_subject_chk
+            CHECK ((hall_id IS NOT NULL) <> (provider_id IS NOT NULL));
+    END IF;
+END
+$mig$;
+CREATE INDEX IF NOT EXISTS idx_chats_provider ON chats(provider_id);
+
+-- ---- Полиморфизм: favorites ----
+-- Старый PK (user_id, hall_id) больше не годится — заменяем на два
+-- обычных UNIQUE-индекса (NULL'ы трактуются как различные, поэтому
+-- избранные-исполнители с hall_id=NULL не конфликтуют между собой).
+ALTER TABLE favorites ADD COLUMN IF NOT EXISTS provider_id INT REFERENCES providers(id);
+ALTER TABLE favorites ALTER COLUMN hall_id DROP NOT NULL;
+ALTER TABLE favorites DROP CONSTRAINT IF EXISTS favorites_pkey;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_favorites_user_hall
+    ON favorites(user_id, hall_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_favorites_user_provider
+    ON favorites(user_id, provider_id);
+DO $mig$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'favorites_subject_chk') THEN
+        ALTER TABLE favorites ADD CONSTRAINT favorites_subject_chk
+            CHECK ((hall_id IS NOT NULL) <> (provider_id IS NOT NULL));
+    END IF;
+END
+$mig$;
+

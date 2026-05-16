@@ -17,7 +17,7 @@ from handlers.h01_errors import WarnException
 from handlers.h03_auth import auth_user
 from libs.common import fit_to_sql, new_guid
 from libs.date import get_date_today, get_timestamp_now
-from libs.ownership import get_hall_by_guid
+from libs.ownership import get_hall_by_guid, get_provider_by_guid
 
 
 router = APIRouter()
@@ -88,7 +88,7 @@ def _mask_name(full_name: Optional[str]) -> str:
 async def create_review(body: ReviewCreateBody, user=Depends(auth_user)):
     # Найдём бронь и проверим условия
     rows = await query_db(f"""
-        SELECT b.id, b.hall_id, b.client_id, b.status, b.event_date
+        SELECT b.id, b.hall_id, b.provider_id, b.client_id, b.status, b.event_date
         FROM bookings b
         WHERE b.guid = {fit_to_sql(body.booking_guid)}
     """)
@@ -110,60 +110,59 @@ async def create_review(body: ReviewCreateBody, user=Depends(auth_user)):
     if existing:
         raise WarnException(400, 'Отзыв уже оставлен')
 
+    # Отзыв полиморфен: привязан к тому же subject, что и бронь.
+    if booking['hall_id'] is not None:
+        subject_col, subject_id = 'hall_id', booking['hall_id']
+    else:
+        subject_col, subject_id = 'provider_id', booking['provider_id']
+
     now = get_timestamp_now()
     guid = new_guid()
     rows = await query_db(f"""
-        INSERT INTO reviews (guid, booking_id, hall_id, client_id, rating, text, created_at)
+        INSERT INTO reviews (guid, booking_id, {subject_col}, client_id, rating, text, created_at)
         VALUES (
             {fit_to_sql(guid)},
             {fit_to_sql(booking['id'])},
-            {fit_to_sql(booking['hall_id'])},
+            {fit_to_sql(subject_id)},
             {fit_to_sql(user['id'])},
             {fit_to_sql(body.rating)},
             {fit_to_sql(body.text)},
             {fit_to_sql(now)}
         )
-        RETURNING id, guid, hall_id, rating, text, owner_reply, owner_reply_at, created_at
+        RETURNING id, guid, hall_id, provider_id, rating, text,
+                  owner_reply, owner_reply_at, created_at
     """)
     return {'review': rows[0]}
 
 
-@router.get('/halls/{guid}/reviews')
-async def hall_reviews(guid: str):
-    """Публичный список отзывов зала. Имя клиента маскируется."""
-    hall = await get_hall_by_guid(guid)
-    if hall is None:
-        raise WarnException(404, 'Зал не найден')
-
+async def _reviews_payload(subject_col: str, subject_id: int) -> dict:
+    """Публичный список отзывов по subject + агрегаты. Имя клиента маскируется."""
     rows = await query_db(f"""
         SELECT r.id, r.guid, r.rating, r.text,
                r.owner_reply, r.owner_reply_at, r.created_at,
                u.full_name AS client_name
         FROM reviews r
         LEFT JOIN users u ON u.id = r.client_id
-        WHERE r.hall_id = {fit_to_sql(hall['id'])}
+        WHERE r.{subject_col} = {fit_to_sql(subject_id)}
         ORDER BY r.id DESC
     """)
-    items = []
-    for r in rows:
-        items.append({
-            'id': r['id'],
-            'guid': r['guid'],
-            'rating': r['rating'],
-            'text': r['text'],
-            'owner_reply': r['owner_reply'],
-            'owner_reply_at': r['owner_reply_at'],
-            'created_at': r['created_at'],
-            'client_name': _mask_name(r['client_name']),
-        })
+    items = [{
+        'id': r['id'],
+        'guid': r['guid'],
+        'rating': r['rating'],
+        'text': r['text'],
+        'owner_reply': r['owner_reply'],
+        'owner_reply_at': r['owner_reply_at'],
+        'created_at': r['created_at'],
+        'client_name': _mask_name(r['client_name']),
+    } for r in rows]
 
-    # Заодно — агрегированный рейтинг
     agg = await query_db(f"""
         SELECT
             COALESCE(AVG(rating), 0)::float AS avg_rating,
             COUNT(*)::int AS reviews_count
         FROM reviews
-        WHERE hall_id = {fit_to_sql(hall['id'])}
+        WHERE {subject_col} = {fit_to_sql(subject_id)}
     """)
     return {
         'items': items,
@@ -172,13 +171,33 @@ async def hall_reviews(guid: str):
     }
 
 
+@router.get('/halls/{guid}/reviews')
+async def hall_reviews(guid: str):
+    """Публичный список отзывов зала."""
+    hall = await get_hall_by_guid(guid)
+    if hall is None:
+        raise WarnException(404, 'Зал не найден')
+    return await _reviews_payload('hall_id', hall['id'])
+
+
+@router.get('/providers/{guid}/reviews')
+async def provider_reviews(guid: str):
+    """Публичный список отзывов исполнителя."""
+    provider = await get_provider_by_guid(guid)
+    if provider is None:
+        raise WarnException(404, 'Исполнитель не найден')
+    return await _reviews_payload('provider_id', provider['id'])
+
+
 @router.post('/reviews/{guid}/reply')
 async def reply_to_review(guid: str, body: ReviewReplyBody, user=Depends(auth_user)):
     rows = await query_db(f"""
-        SELECT r.id, r.hall_id, v.owner_id
+        SELECT r.id,
+               COALESCE(v.owner_id, p.owner_id) AS owner_id
         FROM reviews r
-        JOIN halls h  ON h.id = r.hall_id
-        JOIN venues v ON v.id = h.venue_id
+        LEFT JOIN halls h     ON h.id = r.hall_id
+        LEFT JOIN venues v    ON v.id = h.venue_id
+        LEFT JOIN providers p ON p.id = r.provider_id
         WHERE r.guid = {fit_to_sql(guid)}
     """)
     if not rows:

@@ -121,6 +121,47 @@ HALL_AMENITIES = [
 ]
 
 
+CATEGORIES = [
+    # code, name_ru, name_kz, icon (MaterialCommunityIcons), sort_order
+    ('restaurant', 'Рестораны и залы', 'Мейрамханалар мен залдар', 'silverware-fork-knife', 1),
+    ('host',       'Тамада',           'Тамада',                    'microphone-variant',    2),
+    ('artist',     'Артисты',          'Әртістер',                  'star',                  3),
+    ('decorator',  'Декораторы',       'Декораторлар',              'balloon',               4),
+    ('catering',   'Кейтеринг',        'Кейтеринг',                 'food-takeout-box',      5),
+    ('media',      'Фото и видео',     'Фото және видео',           'camera',                6),
+]
+
+# Атрибуты по категориям: (category_code, attr_code, name_ru, name_kz, icon, sort_order).
+# Категория restaurant атрибутов не имеет — у залов своя система hall_amenities.
+PROVIDER_ATTR_TYPES = [
+    # Тамада
+    ('host', 'lang_kz',   'Казахский язык',      'Қазақ тілі',       None, 1),
+    ('host', 'lang_ru',   'Русский язык',        'Орыс тілі',        None, 2),
+    ('host', 'with_show', 'Шоу-программа',        'Шоу-бағдарлама',   None, 3),
+    # Артисты
+    ('artist', 'singer',   'Певец / вокалист',   'Әнші',             None, 1),
+    ('artist', 'dancer',   'Танцор',             'Биші',             None, 2),
+    ('artist', 'magician', 'Фокусник',           'Фокусшы',          None, 3),
+    ('artist', 'band',     'Музыкальная группа', 'Музыкалық топ',    None, 4),
+    ('artist', 'showman',  'Шоумен',             'Шоумен',           None, 5),
+    # Декораторы
+    ('decorator', 'flowers',  'Живые цветы',          'Тірі гүлдер',         None, 1),
+    ('decorator', 'textile',  'Текстиль / драпировка', 'Тоқыма безендіру',    None, 2),
+    ('decorator', 'balloons', 'Воздушные шары',       'Ауа шарлары',         None, 3),
+    ('decorator', 'lighting', 'Световое оформление',  'Жарықпен безендіру',  None, 4),
+    # Кейтеринг
+    ('catering', 'european',   'Европейская кухня', 'Еуропалық тағамдар', None, 1),
+    ('catering', 'kazakh',     'Казахская кухня',   'Қазақ тағамдары',    None, 2),
+    ('catering', 'banquet',    'Банкетное меню',    'Банкет мәзірі',      None, 3),
+    ('catering', 'fourchette', 'Фуршет',            'Фуршет',             None, 4),
+    # Фото и видео
+    ('media', 'photo',  'Фотосъёмка',        'Фотоға түсіру',        None, 1),
+    ('media', 'video',  'Видеосъёмка',       'Видеоға түсіру',       None, 2),
+    ('media', 'drone',  'Аэросъёмка (дрон)', 'Аэротүсірілім (дрон)', None, 3),
+    ('media', 'studio', 'Студийная съёмка',  'Студиялық түсірілім',  None, 4),
+]
+
+
 async def seed_cities():
     rows = await query_db("SELECT COUNT(*)::int AS n FROM cities")
     if rows and rows[0]['n'] >= len(CITIES):
@@ -171,8 +212,39 @@ async def seed_holidays():
     print(f"[{get_timestamp_now()}] 🌱 Holidays seeded ({now_year}, {now_year + 1})")
 
 
+async def seed_categories():
+    for code, ru, kz, icon, order in CATEGORIES:
+        await query_db(f"""
+            INSERT INTO categories (code, name_ru, name_kz, icon, sort_order)
+            VALUES ({fit_to_sql(code)}, {fit_to_sql(ru)}, {fit_to_sql(kz)},
+                    {fit_to_sql(icon)}, {fit_to_sql(order)})
+            ON CONFLICT (code) DO NOTHING
+        """)
+    print(f"[{get_timestamp_now()}] 🌱 Categories seeded")
+
+
+async def seed_provider_attr_types():
+    for cat_code, code, ru, kz, icon, order in PROVIDER_ATTR_TYPES:
+        await query_db(f"""
+            INSERT INTO provider_attr_types
+                (category_id, code, name_ru, name_kz, icon, sort_order)
+            SELECT c.id, {fit_to_sql(code)}, {fit_to_sql(ru)}, {fit_to_sql(kz)},
+                   {fit_to_sql(icon)}, {fit_to_sql(order)}
+            FROM categories c
+            WHERE c.code = {fit_to_sql(cat_code)}
+              AND NOT EXISTS (
+                  SELECT 1 FROM provider_attr_types pat
+                  WHERE pat.category_id = c.id
+                    AND pat.code = {fit_to_sql(code)}
+              )
+        """)
+    print(f"[{get_timestamp_now()}] 🌱 Provider attribute types seeded")
+
+
 async def seed_all():
     await seed_cities()
     await seed_event_types()
     await seed_amenities()
     await seed_holidays()
+    await seed_categories()
+    await seed_provider_attr_types()

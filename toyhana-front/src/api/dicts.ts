@@ -1,7 +1,19 @@
 import { apiClient } from './client';
-import type { Amenity, City, EventType, Holiday } from './types';
+import type {
+  Amenity, Category, City, EventType, Holiday, ProviderAttrType,
+} from './types';
 
 export const dictsApi = {
+  async categories(): Promise<{ items: Category[] }> {
+    const { data } = await apiClient.get('/dicts/categories');
+    return data;
+  },
+  async providerAttrTypes(category?: string): Promise<{ items: ProviderAttrType[] }> {
+    const { data } = await apiClient.get('/dicts/provider-attr-types', {
+      params: category ? { category } : {},
+    });
+    return data;
+  },
   async cities(): Promise<{ items: City[] }> {
     const { data } = await apiClient.get('/dicts/cities');
     return data;

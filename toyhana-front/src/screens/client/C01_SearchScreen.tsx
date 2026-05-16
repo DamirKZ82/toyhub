@@ -9,6 +9,8 @@ import { Loader } from '@/components/Loader';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { HallCard } from '@/components/HallCard';
+import { ProviderCard } from '@/components/ProviderCard';
+import { CategoryBar } from '@/components/CategoryBar';
 import { FiltersBar, FiltersBarValue } from '@/components/FiltersBar';
 import { CityPicker } from '@/components/CityPicker';
 import { DatePickerSheet } from '@/components/DatePicker';
@@ -16,12 +18,16 @@ import { GuestsPicker } from '@/components/GuestsPicker';
 import { FiltersSheet, SortOption } from '@/components/FiltersSheet';
 
 import { dictsApi, searchApi, ApiError } from '@/api';
-import type { Amenity, City, HallCardData } from '@/api/types';
+import type {
+  Amenity, Category, City, HallCardData, ProviderAttrType, ProviderCardData,
+} from '@/api/types';
 import { useFavoritesStore } from '@/store/favoritesStore';
 import { useRequireAuth } from '@/store/useRequireAuth';
 import { radii, spacing } from '@/theme';
 import { useStyles } from '@/theme/useStyles';
 import { useThemeColors } from '@/theme/useThemeColors';
+import { dictName } from '@/utils/i18nDict';
+import { useAuthStore } from '@/store/authStore';
 import { findNearestCity } from '@/utils/cityCoords';
 import { secureGet, secureSet } from '@/store/secureStorage';
 import type { SearchStackParamList } from '@/navigation/types';
@@ -37,6 +43,7 @@ type CitySource = 'user' | 'geo' | 'none';
 export default function SearchScreen({ navigation }: Props) {
   const { t } = useTranslation();
   const c = useThemeColors();
+  const lang = useAuthStore((s) => s.user?.language ?? 'ru');
   const styles = useStyles((cc) => ({
     list: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xl },
     count: { fontSize: 13, color: cc.muted, marginBottom: spacing.sm },
@@ -52,8 +59,13 @@ export default function SearchScreen({ navigation }: Props) {
     bannerClose: { padding: 4 },
   }));
 
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [category, setCategory] = useState<Category | null>(null);
+  const isRestaurant = category?.code === 'restaurant';
+
   const [cities, setCities] = useState<City[]>([]);
   const [amenities, setAmenities] = useState<Amenity[]>([]);
+  const [attrTypes, setAttrTypes] = useState<ProviderAttrType[]>([]);
 
   const [city, setCity] = useState<City | null>(null);
   const [citySource, setCitySource] = useState<CitySource>('none');
@@ -62,7 +74,7 @@ export default function SearchScreen({ navigation }: Props) {
   const [date, setDate] = useState<string | null>(null);
   const [guests, setGuests] = useState<number | null>(null);
   const [priceMax, setPriceMax] = useState<number | null>(null);
-  const [amenityIds, setAmenityIds] = useState<number[]>([]);
+  const [tagIds, setTagIds] = useState<number[]>([]);
   const [sort, setSort] = useState<SortOption>('rating_desc');
 
   const [cityOpen, setCityOpen] = useState(false);
@@ -70,7 +82,8 @@ export default function SearchScreen({ navigation }: Props) {
   const [guestsOpen, setGuestsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const [items, setItems] = useState<HallCardData[]>([]);
+  const [hallItems, setHallItems] = useState<HallCardData[]>([]);
+  const [provItems, setProvItems] = useState<ProviderCardData[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -78,30 +91,29 @@ export default function SearchScreen({ navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
 
-  // Реактивная подписка: Set сам по себе не триггерит перерисовку, но
-  // он заменяется целиком (new Set()) в store при каждом toggle, так что
-  // ссылка на него меняется и компонент перерисовывается.
   const favGuids = useFavoritesStore((s) => s.guids);
-  const isFav = useCallback((hallGuid: string) => favGuids.has(hallGuid), [favGuids]);
+  const isFav = useCallback((g: string) => favGuids.has(g), [favGuids]);
   const toggleFav = useFavoritesStore((s) => s.toggle);
+  const toggleProviderFav = useFavoritesStore((s) => s.toggleProvider);
   const requireAuth = useRequireAuth();
 
-  // Флаг — определили ли мы город. Поиск ждёт этот флаг, чтобы не стартовать дважды.
   const citySettledRef = useRef(false);
 
-  // Загрузка справочников + определение города.
-  // Выполняется ОДИН РАЗ при монтировании экрана.
+  // Справочники + определение города (один раз)
   useEffect(() => {
     (async () => {
       try {
-        const [citiesResp, amenitiesResp] = await Promise.all([
+        const [catsResp, citiesResp, amenitiesResp] = await Promise.all([
+          dictsApi.categories(),
           dictsApi.cities(),
           dictsApi.amenities(),
         ]);
+        setCategories(catsResp.items);
         setCities(citiesResp.items);
         setAmenities(amenitiesResp.items);
+        const restaurant = catsResp.items.find((x) => x.code === 'restaurant');
+        setCategory(restaurant ?? catsResp.items[0] ?? null);
 
-        // Попытка 1: ранее сохранённый выбор
         const savedRaw = await secureGet(SAVED_CITY_KEY);
         if (savedRaw) {
           const savedId = parseInt(savedRaw, 10);
@@ -114,7 +126,6 @@ export default function SearchScreen({ navigation }: Props) {
           }
         }
 
-        // Попытка 2: геолокация
         try {
           const perm = await Location.requestForegroundPermissionsAsync();
           if (perm.granted) {
@@ -129,64 +140,85 @@ export default function SearchScreen({ navigation }: Props) {
               citySettledRef.current = true;
               return;
             } else {
-              // GPS сработал, но мы не работаем рядом — баннер + все города
               setShowNoCityBanner(true);
             }
           }
-        } catch { /* ignore геолокационные ошибки */ }
-      } catch { /* покажем ошибку в баннере при поиске */ }
-      // Флаг всё равно поднимаем — иначе поиск не стартует
+        } catch { /* ignore геолокацию */ }
+      } catch { /* покажем ошибку при поиске */ }
       citySettledRef.current = true;
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Атрибуты исполнителя — при смене категории (кроме ресторана)
+  useEffect(() => {
+    if (!category || category.code === 'restaurant') { setAttrTypes([]); return; }
+    (async () => {
+      try {
+        const r = await dictsApi.providerAttrTypes(category.code);
+        setAttrTypes(r.items);
+      } catch { setAttrTypes([]); }
+    })();
+  }, [category]);
+
   const filtersValue: FiltersBarValue = useMemo(() => ({
     city,
     date,
-    guests,
+    guests: isRestaurant ? guests : null,
     priceMax,
-    amenityCount: amenityIds.length,
-  }), [city, date, guests, priceMax, amenityIds]);
+    amenityCount: tagIds.length,
+  }), [city, date, guests, priceMax, tagIds, isRestaurant]);
 
   const doSearch = useCallback(async (pageToLoad: number, replace: boolean) => {
+    if (!category) return;
     if (pageToLoad === 1) setLoading(true);
     setError(null);
     try {
-      const resp = await searchApi.halls({
-        city_id: city?.id,
-        date: date ?? undefined,
-        guests: guests ?? undefined,
-        price_max: priceMax ?? undefined,
-        amenity_ids: amenityIds.length ? amenityIds : undefined,
-        sort,
-        page: pageToLoad,
-        page_size: PAGE_SIZE,
-      });
-      setTotal(resp.total);
-      setPage(resp.page);
-      setHasMore(resp.page * resp.page_size < resp.total);
-      setItems((prev) => replace ? resp.items : [...prev, ...resp.items]);
+      if (category.code === 'restaurant') {
+        const resp = await searchApi.halls({
+          city_id: city?.id,
+          date: date ?? undefined,
+          guests: guests ?? undefined,
+          price_max: priceMax ?? undefined,
+          amenity_ids: tagIds.length ? tagIds : undefined,
+          sort,
+          page: pageToLoad,
+          page_size: PAGE_SIZE,
+        });
+        setTotal(resp.total);
+        setPage(resp.page);
+        setHasMore(resp.page * resp.page_size < resp.total);
+        setHallItems((prev) => (replace ? resp.items : [...prev, ...resp.items]));
+      } else {
+        const resp = await searchApi.providers({
+          category_id: category.id,
+          city_id: city?.id,
+          date: date ?? undefined,
+          price_max: priceMax ?? undefined,
+          attr_ids: tagIds.length ? tagIds : undefined,
+          sort,
+          page: pageToLoad,
+          page_size: PAGE_SIZE,
+        });
+        setTotal(resp.total);
+        setPage(resp.page);
+        setHasMore(resp.page * resp.page_size < resp.total);
+        setProvItems((prev) => (replace ? resp.items : [...prev, ...resp.items]));
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('common.error_generic'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [city, date, guests, priceMax, amenityIds, sort, t]);
+  }, [category, city, date, guests, priceMax, tagIds, sort, t]);
 
-  // При изменении любого фильтра — обновляем с первой страницы.
-  // Первый поиск стартует только когда определился initial city (или не определился, но попытка прошла).
   useEffect(() => {
-    if (!citySettledRef.current) return;
+    if (!citySettledRef.current || !category) return;
     doSearch(1, true);
-  }, [city, date, guests, priceMax, amenityIds, sort, doSearch]);
+  }, [category, city, date, guests, priceMax, tagIds, sort, doSearch]);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    doSearch(1, true);
-  };
-
+  const onRefresh = () => { setRefreshing(true); doSearch(1, true); };
   const onEndReached = () => {
     if (loading || !hasMore) return;
     doSearch(page + 1, false);
@@ -199,7 +231,19 @@ export default function SearchScreen({ navigation }: Props) {
     await secureSet(SAVED_CITY_KEY, String(next.id));
   };
 
-  const openHall = (hallGuid: string) => navigation.navigate('HallDetails', { hallGuid });
+  const onSelectCategory = (cat: Category) => {
+    if (cat.id === category?.id) return;
+    setCategory(cat);
+    setHallItems([]);
+    setProvItems([]);
+    setTotal(0);
+    setPage(1);
+    setHasMore(false);
+    setPriceMax(null);
+    setTagIds([]);
+    setGuests(null);
+    setSort('rating_desc');
+  };
 
   const listHeader = (
     <>
@@ -207,14 +251,8 @@ export default function SearchScreen({ navigation }: Props) {
       {showNoCityBanner ? (
         <View style={styles.banner}>
           <Icon name="information-outline" size={18} color={c.primary} />
-          <Text style={styles.bannerText}>
-            {t('search.no_city_nearby')}
-          </Text>
-          <Pressable
-            onPress={() => setShowNoCityBanner(false)}
-            hitSlop={8}
-            style={styles.bannerClose}
-          >
+          <Text style={styles.bannerText}>{t('search.no_city_nearby')}</Text>
+          <Pressable onPress={() => setShowNoCityBanner(false)} hitSlop={8} style={styles.bannerClose}>
             <Icon name="close" size={18} color={c.muted} />
           </Pressable>
         </View>
@@ -223,13 +261,9 @@ export default function SearchScreen({ navigation }: Props) {
         <View style={styles.banner}>
           <Icon name="crosshairs-gps" size={18} color={c.primary} />
           <Text style={styles.bannerText}>
-            {t('search.city_detected', { city: city.name_ru })}
+            {t('search.city_detected', { city: dictName(city, lang) })}
           </Text>
-          <Pressable
-            onPress={() => setCitySource('user')}
-            hitSlop={8}
-            style={styles.bannerClose}
-          >
+          <Pressable onPress={() => setCitySource('user')} hitSlop={8} style={styles.bannerClose}>
             <Icon name="close" size={18} color={c.muted} />
           </Pressable>
         </View>
@@ -240,6 +274,11 @@ export default function SearchScreen({ navigation }: Props) {
 
   return (
     <Screen padded={false}>
+      <CategoryBar
+        categories={categories}
+        selectedId={category?.id ?? null}
+        onSelect={onSelectCategory}
+      />
       <FiltersBar
         value={filtersValue}
         onCityPress={() => setCityOpen(true)}
@@ -248,11 +287,11 @@ export default function SearchScreen({ navigation }: Props) {
         onExtraFilters={() => setFiltersOpen(true)}
       />
 
-      {loading && items.length === 0 ? (
+      {loading && hallItems.length === 0 && provItems.length === 0 ? (
         <Loader />
-      ) : (
+      ) : isRestaurant ? (
         <FlatList
-          data={items}
+          data={hallItems}
           keyExtractor={(it) => it.hall.guid}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -271,7 +310,35 @@ export default function SearchScreen({ navigation }: Props) {
               onToggleFavorite={() =>
                 requireAuth('favorite', () => toggleFav(item.hall.guid, !isFav(item.hall.guid)))
               }
-              onPress={() => openHall(item.hall.guid)}
+              onPress={() => navigation.navigate('HallDetails', { hallGuid: item.hall.guid })}
+            />
+          )}
+        />
+      ) : (
+        <FlatList
+          data={provItems}
+          keyExtractor={(it) => it.provider.guid}
+          contentContainerStyle={styles.list}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.4}
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={
+            !loading && !error ? (
+              <EmptyState title={t('search.no_results')} subtitle={t('search.no_results_hint')} />
+            ) : null
+          }
+          renderItem={({ item }) => (
+            <ProviderCard
+              item={item}
+              isFavorite={isFav(item.provider.guid)}
+              onToggleFavorite={() =>
+                requireAuth('favorite', () =>
+                  toggleProviderFav(item.provider.guid, !isFav(item.provider.guid)))
+              }
+              onPress={() =>
+                navigation.navigate('ProviderDetails', { providerGuid: item.provider.guid })
+              }
             />
           )}
         />
@@ -298,11 +365,12 @@ export default function SearchScreen({ navigation }: Props) {
       <FiltersSheet
         visible={filtersOpen}
         onClose={() => setFiltersOpen(false)}
-        amenities={amenities}
-        value={{ priceMax, amenityIds, sort }}
+        amenities={isRestaurant ? amenities : attrTypes}
+        amenitiesLabel={isRestaurant ? undefined : t('provider.attrs_label')}
+        value={{ priceMax, amenityIds: tagIds, sort }}
         onApply={(v) => {
           setPriceMax(v.priceMax);
-          setAmenityIds(v.amenityIds);
+          setTagIds(v.amenityIds);
           setSort(v.sort);
         }}
       />

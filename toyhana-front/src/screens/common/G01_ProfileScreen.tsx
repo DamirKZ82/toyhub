@@ -132,6 +132,13 @@ export default function ProfileScreen({ navigation }: Props) {
           />
           <Divider />
           <List.Item
+            title={t('profile.my_providers')}
+            left={(p) => <List.Icon {...p} icon="account-star-outline" />}
+            right={(p) => <List.Icon {...p} icon="chevron-right" />}
+            onPress={() => navigation.navigate('MyProviders')}
+          />
+          <Divider />
+          <List.Item
             title={t('profile.incoming_bookings')}
             left={(p) => <List.Icon {...p} icon="inbox-arrow-down-outline" />}
             right={(p) => <List.Icon {...p} icon="chevron-right" />}

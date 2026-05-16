@@ -6,18 +6,27 @@ export type AuthStackParamList = {
   CompleteProfile: undefined;
 };
 
-/** Поиск → Карточка зала → Форма брони */
+/** Бронь возможна для зала ИЛИ исполнителя — на рантайме задаётся ровно одно. */
+export type BookingFormParams = {
+  hallGuid?: string;
+  providerGuid?: string;
+  initialDate?: string;
+};
+
+/** Поиск → Карточка зала/исполнителя → Форма брони */
 export type SearchStackParamList = {
   SearchHome: undefined;
   HallDetails: { hallGuid: string };
-  BookingForm: { hallGuid: string; initialDate?: string };
+  ProviderDetails: { providerGuid: string };
+  BookingForm: BookingFormParams;
 };
 
-/** Избранное → Карточка зала */
+/** Избранное → Карточка зала/исполнителя */
 export type FavoritesStackParamList = {
   FavoritesHome: undefined;
   HallDetails: { hallGuid: string };
-  BookingForm: { hallGuid: string; initialDate?: string };
+  ProviderDetails: { providerGuid: string };
+  BookingForm: BookingFormParams;
 };
 
 /** Сообщения → Чат */
@@ -37,9 +46,13 @@ export type ProfileStackParamList = {
   IncomingBookings: undefined;
   BookingDetails: { bookingGuid: string };
   ReviewReply: { reviewGuid: string; hallName: string; currentText: string | null };
+  // Исполнители (новые категории)
+  MyProviders: undefined;
+  ProviderForm: { providerGuid?: string };
+  ProviderDetails: { providerGuid: string };
   // Из бывшего BookingsStack
   MyBookings: undefined;
-  ReviewForm: { bookingGuid: string; hallName: string };
+  ReviewForm: { bookingGuid: string; subjectName: string };
   HallDetails: { hallGuid: string };
 };
 

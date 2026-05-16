@@ -146,24 +146,26 @@ export default function MyBookingsScreen({ navigation }: Props) {
             const canReview =
               item.status === 'confirmed' &&
               eventPassed &&
-              !item.hall_deleted &&
-              item.hall;
+              !item.subject.deleted;
             const canCancel = item.status === 'pending' || item.status === 'confirmed';
             const b = badgeStyle(item.status);
 
+            const openSubject = () => {
+              if (item.subject.deleted || !item.subject.guid) return;
+              if (item.subject.type === 'provider') {
+                navigation.navigate('ProviderDetails', { providerGuid: item.subject.guid });
+              } else {
+                navigation.navigate('HallDetails', { hallGuid: item.subject.guid });
+              }
+            };
+
             return (
               <View style={styles.card}>
-                <Pressable
-                  onPress={() => {
-                    if (item.hall?.guid) {
-                      navigation.navigate('HallDetails', { hallGuid: item.hall.guid });
-                    }
-                  }}
-                >
+                <Pressable onPress={openSubject}>
                   <Text style={styles.hallName} numberOfLines={1}>
-                    {item.hall_deleted || !item.hall?.name
-                      ? t('bookings.hall_deleted')
-                      : item.hall.name}
+                    {item.subject.deleted || !item.subject.name
+                      ? t('bookings.subject_deleted')
+                      : item.subject.name}
                   </Text>
                   <Text style={styles.meta}>
                     {formatDateHuman(item.event_date, lang)} · {item.guests_count} {t('search.guests_word')}
@@ -195,7 +197,7 @@ export default function MyBookingsScreen({ navigation }: Props) {
                       onPress={() =>
                         navigation.navigate('ReviewForm', {
                           bookingGuid: item.guid,
-                          hallName: item.hall!.name ?? '',
+                          subjectName: item.subject.name ?? '',
                         })
                       }
                     >

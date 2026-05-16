@@ -1,8 +1,20 @@
 import { apiClient } from './client';
 
+/** Унифицированный subject чата — зал или исполнитель. */
+export interface ChatSubject {
+  type: 'hall' | 'provider';
+  guid: string | null;
+  name: string | null;
+  main_thumb: string | null;
+  main_photo: string | null;
+  category_code?: string | null;
+}
+
 export interface ChatListItem {
   guid: string;
-  /** Чат всегда привязан к залу (может стать null только если зал удалён) */
+  /** Унифицированный subject (есть всегда). */
+  subject: ChatSubject;
+  /** Заполнено, если чат привязан к залу. */
   hall: {
     guid: string;
     name: string;
@@ -10,6 +22,16 @@ export interface ChatListItem {
     main_photo: string | null;
     price_weekday: number | null;
     price_weekend: number | null;
+  } | null;
+  /** Заполнено, если чат привязан к исполнителю. */
+  provider: {
+    guid: string;
+    name: string;
+    main_thumb: string | null;
+    main_photo: string | null;
+    price_from: number | null;
+    price_unit: 'event' | 'hour' | 'person' | 'day' | null;
+    category_code: string | null;
   } | null;
   /** Заявка — опционально. null если юзер ещё не подал заявку */
   booking: {
@@ -79,6 +101,14 @@ export const chatsApi = {
   async openWithHall(hallGuid: string): Promise<{ chat_guid: string }> {
     const { data } = await apiClient.post<{ chat_guid: string }>(
       `/halls/${hallGuid}/chat`,
+    );
+    return data;
+  },
+
+  /** Создать (или получить) чат с исполнителем. Кнопка "Написать" на карточке C07. */
+  async openWithProvider(providerGuid: string): Promise<{ chat_guid: string }> {
+    const { data } = await apiClient.post<{ chat_guid: string }>(
+      `/providers/${providerGuid}/chat`,
     );
     return data;
   },

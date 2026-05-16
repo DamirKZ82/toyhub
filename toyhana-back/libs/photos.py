@@ -44,6 +44,12 @@ def _hall_dir(hall_id: int) -> pathlib.Path:
     return dir_path
 
 
+def _provider_dir(provider_id: int) -> pathlib.Path:
+    dir_path = _uploads_root() / 'providers' / str(provider_id)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    return dir_path
+
+
 def _validate_extension(filename: str) -> str:
     """Вернёт расширение в нижнем регистре или бросит WarnException."""
     if not filename:
@@ -67,15 +73,12 @@ def _resize_preserve_aspect(img: Image.Image, max_side: int) -> Image.Image:
     return img.resize((int(w * ratio), int(h * ratio)), Image.Resampling.LANCZOS)
 
 
-async def save_hall_photo(hall_id: int, filename: str, content: bytes) -> Tuple[str, str]:
+async def _save_image(content: bytes, filename: str,
+                      dir_path: pathlib.Path, url_dir: str) -> Tuple[str, str]:
     """
-    Сохранить фото для зала. Вернуть (file_path, thumb_path) — относительные пути,
-    пригодные для хранения в БД и отдачи клиенту как /uploads/halls/{hall_id}/{uuid}.jpg.
-
-    Бросает WarnException(400) при:
-        - слишком большом файле,
-        - неподдерживаемом формате,
-        - битом изображении.
+    Общая логика сохранения фото (валидация, ресайз, запись на диск).
+    url_dir — относительный префикс вида 'halls/1' или 'providers/1'.
+    Вернёт (file_path, thumb_path) — относительные URL под /uploads/.
     """
     if len(content) > MAX_FILE_BYTES:
         raise WarnException(400, 'Размер файла превышает 15 МБ')
@@ -101,7 +104,6 @@ async def save_hall_photo(hall_id: int, filename: str, content: bytes) -> Tuple[
 
     # Имя файла — uuid, чтобы избежать коллизий и не светить оригинальное имя
     base = uuid.uuid4().hex
-    dir_path = _hall_dir(hall_id)
     main_fs = dir_path / f'{base}.jpg'
     thumb_fs = dir_path / f'{base}_thumb.jpg'
 
@@ -111,9 +113,19 @@ async def save_hall_photo(hall_id: int, filename: str, content: bytes) -> Tuple[
 
     # Отдаём относительные URL — их поймёт и раздача через FastAPI, и nginx.
     return (
-        f'/uploads/halls/{hall_id}/{base}.jpg',
-        f'/uploads/halls/{hall_id}/{base}_thumb.jpg',
+        f'/uploads/{url_dir}/{base}.jpg',
+        f'/uploads/{url_dir}/{base}_thumb.jpg',
     )
+
+
+async def save_hall_photo(hall_id: int, filename: str, content: bytes) -> Tuple[str, str]:
+    """Сохранить фото зала -> /uploads/halls/{hall_id}/{uuid}.jpg."""
+    return await _save_image(content, filename, _hall_dir(hall_id), f'halls/{hall_id}')
+
+
+async def save_provider_photo(provider_id: int, filename: str, content: bytes) -> Tuple[str, str]:
+    """Сохранить фото исполнителя -> /uploads/providers/{provider_id}/{uuid}.jpg."""
+    return await _save_image(content, filename, _provider_dir(provider_id), f'providers/{provider_id}')
 
 
 def delete_photo_files(file_path: str, thumb_path: str) -> None:

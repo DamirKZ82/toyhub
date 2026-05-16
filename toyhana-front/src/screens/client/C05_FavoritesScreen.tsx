@@ -9,6 +9,7 @@ import { Loader } from '@/components/Loader';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { HallCard } from '@/components/HallCard';
+import { ProviderCard } from '@/components/ProviderCard';
 
 import { favoritesApi, ApiError } from '@/api';
 import type { FavoriteItem } from '@/api/types';
@@ -35,6 +36,7 @@ export default function FavoritesScreen({ navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const toggleFav = useFavoritesStore((s) => s.toggle);
+  const toggleProviderFav = useFavoritesStore((s) => s.toggleProvider);
   const favGuids = useFavoritesStore((s) => s.guids);
 
   const guestStyles = useStyles((c) => ({
@@ -69,9 +71,18 @@ export default function FavoritesScreen({ navigation }: Props) {
 
   const onRefresh = () => { setRefreshing(true); load(); };
 
-  const handleToggle = async (hallGuid: string) => {
+  const handleToggleHall = async (hallGuid: string) => {
     await toggleFav(hallGuid, !favGuids.has(hallGuid));
-    setItems((prev) => prev.filter((it) => it.hall.guid !== hallGuid));
+    setItems((prev) => prev.filter(
+      (it) => it.type !== 'hall' || it.hall.guid !== hallGuid,
+    ));
+  };
+
+  const handleToggleProvider = async (providerGuid: string) => {
+    await toggleProviderFav(providerGuid, !favGuids.has(providerGuid));
+    setItems((prev) => prev.filter(
+      (it) => it.type !== 'provider' || it.provider.guid !== providerGuid,
+    ));
   };
 
   // Гостевой режим
@@ -99,7 +110,7 @@ export default function FavoritesScreen({ navigation }: Props) {
     <Screen padded={false}>
       <FlatList
         data={items}
-        keyExtractor={(it) => it.hall.guid}
+        keyExtractor={(it) => (it.type === 'hall' ? it.hall.guid : it.provider.guid)}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={error ? <ErrorBanner message={error} /> : null}
@@ -109,12 +120,23 @@ export default function FavoritesScreen({ navigation }: Props) {
           ) : null
         }
         renderItem={({ item }) => (
-          <HallCard
-            item={item}
-            isFavorite
-            onToggleFavorite={() => handleToggle(item.hall.guid)}
-            onPress={() => navigation.navigate('HallDetails', { hallGuid: item.hall.guid })}
-          />
+          item.type === 'hall' ? (
+            <HallCard
+              item={item}
+              isFavorite
+              onToggleFavorite={() => handleToggleHall(item.hall.guid)}
+              onPress={() => navigation.navigate('HallDetails', { hallGuid: item.hall.guid })}
+            />
+          ) : (
+            <ProviderCard
+              item={item}
+              isFavorite
+              onToggleFavorite={() => handleToggleProvider(item.provider.guid)}
+              onPress={() =>
+                navigation.navigate('ProviderDetails', { providerGuid: item.provider.guid })
+              }
+            />
+          )
         )}
       />
     </Screen>

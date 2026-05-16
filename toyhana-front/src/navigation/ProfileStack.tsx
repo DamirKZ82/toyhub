@@ -11,11 +11,14 @@ import IncomingBookingsScreen from '@/screens/owner/O05_IncomingBookingsScreen';
 import BookingDetailsScreen from '@/screens/owner/O06_BookingDetailsScreen';
 import HallCalendarScreen from '@/screens/owner/O07_HallCalendarScreen';
 import ReviewReplyScreen from '@/screens/owner/O08_ReviewReplyScreen';
+import MyProvidersScreen from '@/screens/owner/O09_MyProvidersScreen';
+import ProviderFormScreen from '@/screens/owner/O10_ProviderFormScreen';
 
 // Перенесено из BookingsStack (этап 11)
 import MyBookingsScreen from '@/screens/client/C04_MyBookingsScreen';
 import ReviewFormScreen from '@/screens/client/C06_ReviewFormScreen';
 import HallDetailsScreen from '@/screens/client/C02_HallDetailsScreen';
+import ProviderDetailsScreen from '@/screens/client/C07_ProviderDetailsScreen';
 
 import type { ProfileStackParamList } from './types';
 import { useThemeColors } from '@/theme/useThemeColors';
@@ -73,6 +76,25 @@ export function ProfileStack() {
         name="ReviewReply"
         component={ReviewReplyScreen}
         options={{ title: t('owner.review_reply_title') }}
+      />
+      <Stack.Screen
+        name="MyProviders"
+        component={MyProvidersScreen}
+        options={{ title: t('owner.providers_title') }}
+      />
+      <Stack.Screen
+        name="ProviderForm"
+        component={ProviderFormScreen}
+        options={({ route }) => ({
+          title: route.params.providerGuid
+            ? t('owner.provider_form_edit')
+            : t('owner.provider_form_new'),
+        })}
+      />
+      <Stack.Screen
+        name="ProviderDetails"
+        component={ProviderDetailsScreen}
+        options={{ title: '' }}
       />
 
       {/* Перенесено из BookingsStack */}

@@ -2,7 +2,9 @@ import { apiClient } from './client';
 import type { Booking, BookingStatus } from './types';
 
 export interface BookingCreateBody {
-  hall_guid: string;
+  /** Ровно одно из двух. */
+  hall_guid?: string;
+  provider_guid?: string;
   event_date: string;
   guests_count: number;
   event_type_id?: number;

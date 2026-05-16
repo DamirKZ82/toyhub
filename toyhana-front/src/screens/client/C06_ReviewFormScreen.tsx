@@ -28,7 +28,7 @@ export default function ReviewFormScreen({ route, navigation }: Props) {
 }));
 
   const { t } = useTranslation();
-  const { bookingGuid, hallName } = route.params;
+  const { bookingGuid, subjectName } = route.params;
 
   const [rating, setRating] = useState(0);
   const [text, setText] = useState('');
@@ -52,7 +52,7 @@ export default function ReviewFormScreen({ route, navigation }: Props) {
   return (
     <Screen scroll>
       <Text style={styles.title}>{t('review_form.title')}</Text>
-      <Text style={styles.hallName}>{hallName}</Text>
+      <Text style={styles.hallName}>{subjectName}</Text>
 
       <ErrorBanner message={error} />
 

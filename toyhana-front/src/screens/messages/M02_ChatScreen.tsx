@@ -248,25 +248,24 @@ export default function ChatScreen({ route, navigation }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      {details.chat.hall ? (
+      {details.chat.subject.guid ? (
         <Pressable
           style={styles.hallCard}
           onPress={() => {
-            // Переход к деталям зала через Search-стек (там живёт HallDetails)
+            const s = details.chat.subject;
             navigation.getParent()?.dispatch(
               CommonActions.navigate({
                 name: 'Search',
-                params: {
-                  screen: 'HallDetails',
-                  params: { hallGuid: details.chat.hall!.guid },
-                },
+                params: s.type === 'provider'
+                  ? { screen: 'ProviderDetails', params: { providerGuid: s.guid } }
+                  : { screen: 'HallDetails', params: { hallGuid: s.guid } },
               }),
             );
           }}
         >
-          {details.chat.hall.main_thumb ? (
+          {details.chat.subject.main_thumb ? (
             <Image
-              source={{ uri: `${API_BASE_URL}${details.chat.hall.main_thumb}` }}
+              source={{ uri: `${API_BASE_URL}${details.chat.subject.main_thumb}` }}
               style={styles.hallPhoto}
             />
           ) : (
@@ -277,11 +276,15 @@ export default function ChatScreen({ route, navigation }: Props) {
           <View style={styles.hallBody}>
             <View>
               <Text style={styles.hallName} numberOfLines={1}>
-                {details.chat.hall.name}
+                {details.chat.subject.name}
               </Text>
-              {details.chat.hall.price_weekday ? (
+              {details.chat.hall?.price_weekday ? (
                 <Text style={styles.hallPrice}>
                   {t('hall.price_weekday_from', { price: formatPrice(details.chat.hall.price_weekday) })}
+                </Text>
+              ) : details.chat.provider?.price_from != null ? (
+                <Text style={styles.hallPrice}>
+                  {t('hall.price_weekday_from', { price: formatPrice(details.chat.provider.price_from) })}
                 </Text>
               ) : null}
             </View>

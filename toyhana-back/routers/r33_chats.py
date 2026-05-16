@@ -25,7 +25,7 @@ from handlers.h03_auth import auth_user
 from libs.common import fit_to_sql, new_guid
 from libs.date import get_timestamp_now
 from libs.fcm import send_push
-from libs.ownership import get_hall_by_guid
+from libs.ownership import get_hall_by_guid, get_provider_by_guid
 
 
 router = APIRouter(tags=['chats'])
@@ -35,11 +35,15 @@ router = APIRouter(tags=['chats'])
 # Вспомогательное
 # -------------------------------------------------------------------------
 
+_CHAT_COLS = """
+    c.id, c.guid, c.hall_id, c.provider_id, c.client_id, c.owner_id,
+    c.booking_id, c.last_message_at, c.last_message_preview, c.created_at
+"""
+
+
 async def _get_chat_by_guid(guid: str) -> dict | None:
     rows = await query_db(f"""
-        SELECT
-            c.id, c.guid, c.hall_id, c.client_id, c.owner_id, c.booking_id,
-            c.last_message_at, c.last_message_preview, c.created_at
+        SELECT {_CHAT_COLS}
         FROM chats c
         WHERE c.guid = {fit_to_sql(guid)}
     """)
@@ -66,25 +70,72 @@ async def _chat_list_row(chat_row: dict, current_user_id: int) -> dict:
     other_name = rows[0]['full_name'] if rows else None
     other_phone = rows[0]['phone'] if rows else None
 
-    # Зал + главное фото + цена (для карточки в шапке чата и превью в списке)
-    rows = await query_db(f"""
-        SELECT
-            h.guid AS hall_guid,
-            h.name AS hall_name,
-            h.price_weekday,
-            h.price_weekend,
-            (SELECT p.thumb_path FROM hall_photos p
-                WHERE p.hall_id = h.id
-                ORDER BY p.sort_order ASC, p.id ASC
-                LIMIT 1) AS main_thumb,
-            (SELECT p.file_path FROM hall_photos p
-                WHERE p.hall_id = h.id
-                ORDER BY p.sort_order ASC, p.id ASC
-                LIMIT 1) AS main_photo
-        FROM halls h
-        WHERE h.id = {fit_to_sql(chat_row['hall_id'])}
-    """)
-    hall = rows[0] if rows else {}
+    # Subject чата — зал ИЛИ исполнитель (для карточки в шапке и превью в списке)
+    hall = None
+    provider = None
+    if chat_row['hall_id'] is not None:
+        rows = await query_db(f"""
+            SELECT
+                h.guid AS hall_guid, h.name AS hall_name,
+                h.price_weekday, h.price_weekend,
+                (SELECT p.thumb_path FROM hall_photos p
+                    WHERE p.hall_id = h.id
+                    ORDER BY p.sort_order ASC, p.id ASC LIMIT 1) AS main_thumb,
+                (SELECT p.file_path FROM hall_photos p
+                    WHERE p.hall_id = h.id
+                    ORDER BY p.sort_order ASC, p.id ASC LIMIT 1) AS main_photo
+            FROM halls h
+            WHERE h.id = {fit_to_sql(chat_row['hall_id'])}
+        """)
+        hr = rows[0] if rows else {}
+        hall = {
+            'guid': hr.get('hall_guid'),
+            'name': hr.get('hall_name'),
+            'main_thumb': hr.get('main_thumb'),
+            'main_photo': hr.get('main_photo'),
+            'price_weekday': hr.get('price_weekday'),
+            'price_weekend': hr.get('price_weekend'),
+        } if hr else None
+        subject = {
+            'type': 'hall',
+            'guid': hr.get('hall_guid'),
+            'name': hr.get('hall_name'),
+            'main_thumb': hr.get('main_thumb'),
+            'main_photo': hr.get('main_photo'),
+        }
+    else:
+        rows = await query_db(f"""
+            SELECT
+                p.guid AS provider_guid, p.name AS provider_name,
+                p.price_from, p.price_unit, cat.code AS category_code,
+                (SELECT pp.thumb_path FROM provider_photos pp
+                    WHERE pp.provider_id = p.id
+                    ORDER BY pp.sort_order ASC, pp.id ASC LIMIT 1) AS main_thumb,
+                (SELECT pp.file_path FROM provider_photos pp
+                    WHERE pp.provider_id = p.id
+                    ORDER BY pp.sort_order ASC, pp.id ASC LIMIT 1) AS main_photo
+            FROM providers p
+            JOIN categories cat ON cat.id = p.category_id
+            WHERE p.id = {fit_to_sql(chat_row['provider_id'])}
+        """)
+        pr = rows[0] if rows else {}
+        provider = {
+            'guid': pr.get('provider_guid'),
+            'name': pr.get('provider_name'),
+            'main_thumb': pr.get('main_thumb'),
+            'main_photo': pr.get('main_photo'),
+            'price_from': pr.get('price_from'),
+            'price_unit': pr.get('price_unit'),
+            'category_code': pr.get('category_code'),
+        } if pr else None
+        subject = {
+            'type': 'provider',
+            'guid': pr.get('provider_guid'),
+            'name': pr.get('provider_name'),
+            'main_thumb': pr.get('main_thumb'),
+            'main_photo': pr.get('main_photo'),
+            'category_code': pr.get('category_code'),
+        }
 
     # Заявка (если есть)
     booking = None
@@ -121,14 +172,9 @@ async def _chat_list_row(chat_row: dict, current_user_id: int) -> dict:
 
     return {
         'guid': chat_row['guid'],
-        'hall': {
-            'guid': hall.get('hall_guid'),
-            'name': hall.get('hall_name'),
-            'main_thumb': hall.get('main_thumb'),
-            'main_photo': hall.get('main_photo'),
-            'price_weekday': hall.get('price_weekday'),
-            'price_weekend': hall.get('price_weekend'),
-        } if hall else None,
+        'subject': subject,
+        'hall': hall,
+        'provider': provider,
         'booking': booking,
         'other_user': {
             'name': other_name,
@@ -143,43 +189,39 @@ async def _chat_list_row(chat_row: dict, current_user_id: int) -> dict:
     }
 
 
-async def _get_or_create_chat(hall_id: int, hall_owner_id: int, client_id: int) -> dict:
+async def _get_or_create_chat(subject_col: str, subject_id: int,
+                              owner_id: int, client_id: int) -> dict:
     """
-    Вернёт существующий чат между клиентом и залом или создаст новый.
-    Если клиент == владелец — WarnException 400 (владельцу не с кем писать про свой зал).
+    Вернёт существующий чат между клиентом и subject (зал/исполнитель) или создаст.
+    subject_col — 'hall_id' либо 'provider_id'.
+    Если клиент == владелец — WarnException 400.
     """
-    if client_id == hall_owner_id:
+    if client_id == owner_id:
         raise WarnException(400, 'Нельзя написать самому себе')
 
-    # Попытка найти существующий
     rows = await query_db(f"""
-        SELECT
-            id, guid, hall_id, client_id, owner_id, booking_id,
-            last_message_at, last_message_preview, created_at
+        SELECT {_CHAT_COLS.replace('c.', '')}
         FROM chats
-        WHERE hall_id = {fit_to_sql(hall_id)}
+        WHERE {subject_col} = {fit_to_sql(subject_id)}
           AND client_id = {fit_to_sql(client_id)}
     """)
     if rows:
         return rows[0]
 
-    # Создаём
     guid = new_guid()
     now = get_timestamp_now()
     await query_db(f"""
-        INSERT INTO chats (guid, hall_id, client_id, owner_id, created_at)
+        INSERT INTO chats (guid, {subject_col}, client_id, owner_id, created_at)
         VALUES (
             {fit_to_sql(guid)},
-            {fit_to_sql(hall_id)},
+            {fit_to_sql(subject_id)},
             {fit_to_sql(client_id)},
-            {fit_to_sql(hall_owner_id)},
+            {fit_to_sql(owner_id)},
             {fit_to_sql(now)}
         )
     """)
     rows = await query_db(f"""
-        SELECT
-            id, guid, hall_id, client_id, owner_id, booking_id,
-            last_message_at, last_message_preview, created_at
+        SELECT {_CHAT_COLS.replace('c.', '')}
         FROM chats WHERE guid = {fit_to_sql(guid)}
     """)
     return rows[0]
@@ -209,7 +251,23 @@ async def open_chat_with_hall(guid: str, user=Depends(auth_user)):
         raise WarnException(404, 'Заведение не найдено')
     owner_id = rows[0]['owner_id']
 
-    chat = await _get_or_create_chat(hall['id'], owner_id, user['id'])
+    chat = await _get_or_create_chat('hall_id', hall['id'], owner_id, user['id'])
+    return {'chat_guid': chat['guid']}
+
+
+@router.post('/providers/{guid}/chat')
+async def open_chat_with_provider(guid: str, user=Depends(auth_user)):
+    """
+    Создать чат с исполнителем (или вернуть существующий).
+    Используется кнопкой "Написать" на карточке исполнителя.
+    """
+    provider = await get_provider_by_guid(guid)
+    if provider is None or not provider.get('is_active', True):
+        raise WarnException(404, 'Исполнитель не найден')
+
+    chat = await _get_or_create_chat(
+        'provider_id', provider['id'], provider['owner_id'], user['id'],
+    )
     return {'chat_guid': chat['guid']}
 
 
@@ -220,9 +278,7 @@ async def open_chat_with_hall(guid: str, user=Depends(auth_user)):
 @router.get('/chats')
 async def list_chats(user=Depends(auth_user)):
     rows = await query_db(f"""
-        SELECT
-            c.id, c.guid, c.hall_id, c.client_id, c.owner_id, c.booking_id,
-            c.last_message_at, c.last_message_preview, c.created_at
+        SELECT {_CHAT_COLS}
         FROM chats c
         WHERE c.client_id = {fit_to_sql(user['id'])}
            OR c.owner_id  = {fit_to_sql(user['id'])}

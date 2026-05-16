@@ -32,6 +32,27 @@ async def get_hall_by_guid(guid: str) -> Optional[dict]:
     return rows[0] if rows else None
 
 
+async def get_provider_by_guid(guid: str) -> Optional[dict]:
+    rows = await query_db(f"""
+        SELECT id, guid, owner_id, category_id, city_id, name, description,
+               phone, latitude, longitude, price_from, price_unit, is_active,
+               created_at, updated_at
+        FROM providers
+        WHERE guid = {fit_to_sql(guid)}
+    """)
+    return rows[0] if rows else None
+
+
+async def require_provider_owner(provider_guid: str, user: dict) -> dict:
+    """Вернёт provider или бросит 404/403."""
+    provider = await get_provider_by_guid(provider_guid)
+    if provider is None:
+        raise WarnException(404, 'Исполнитель не найден')
+    if provider['owner_id'] != user['id']:
+        raise WarnException(403, 'Недостаточно прав')
+    return provider
+
+
 async def require_venue_owner(venue_guid: str, user: dict) -> dict:
     """Вернёт venue или бросит 404/403."""
     venue = await get_venue_by_guid(venue_guid)

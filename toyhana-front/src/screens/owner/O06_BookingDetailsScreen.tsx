@@ -128,9 +128,9 @@ export default function BookingDetailsScreen({ route, navigation }: Props) {
       <ErrorBanner message={error} />
 
       <Text style={styles.hallName}>
-        {booking.hall?.name ?? t('bookings.hall_deleted')}
+        {booking.subject.name ?? t('bookings.subject_deleted')}
       </Text>
-      <Text style={styles.venue}>{booking.hall?.venue_name ?? ''}</Text>
+      <Text style={styles.venue}>{booking.subject.parent_name ?? ''}</Text>
 
       <View style={styles.block}>
         <View style={styles.row}>

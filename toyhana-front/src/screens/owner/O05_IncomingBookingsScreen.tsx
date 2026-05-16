@@ -125,7 +125,7 @@ export default function IncomingBookingsScreen({ navigation }: Props) {
               >
                 <View style={styles.cardTop}>
                   <Text style={styles.hallName} numberOfLines={1}>
-                    {item.hall?.name ?? t('bookings.hall_deleted')}
+                    {item.subject.name ?? t('bookings.subject_deleted')}
                   </Text>
                   <View style={[styles.badge, { backgroundColor: b.bg }]}>
                     <Text style={[styles.badgeText, { color: b.fg }]}>{b.label}</Text>

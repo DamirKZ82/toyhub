@@ -23,10 +23,15 @@ interface Props {
   onClose: () => void;
   value: Value;
   onApply: (v: Value) => void;
+  /** Список фильтруемых тегов: удобства зала ИЛИ атрибуты исполнителя. */
   amenities: Amenity[];
+  /** Заголовок секции тегов (по умолчанию — "Удобства"). */
+  amenitiesLabel?: string;
 }
 
-export function FiltersSheet({ visible, onClose, value, onApply, amenities }: Props) {
+export function FiltersSheet({
+  visible, onClose, value, onApply, amenities, amenitiesLabel,
+}: Props) {
   const lang = useAuthStore((s) => s.user?.language ?? 'ru');
   const [priceMax, setPriceMax] = useState(value.priceMax ? String(value.priceMax) : '');
   const [amenityIds, setAmenityIds] = useState<number[]>(value.amenityIds);
@@ -110,7 +115,9 @@ export function FiltersSheet({ visible, onClose, value, onApply, amenities }: Pr
           style={{ marginBottom: spacing.md }}
         />
 
-        <Text style={styles.sectionLabel}>Удобства</Text>
+        {amenities.length > 0 ? (
+          <Text style={styles.sectionLabel}>{amenitiesLabel ?? 'Удобства'}</Text>
+        ) : null}
         <View style={styles.chips}>
           {amenities.map((a) => {
             const selected = amenityIds.includes(a.id);

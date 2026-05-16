@@ -157,7 +157,7 @@ export default function ChatsListScreen({ navigation }: Props) {
           ) : null
         }
         renderItem={({ item }) => {
-          const thumb = item.hall?.main_thumb ? `${API_BASE_URL}${item.hall.main_thumb}` : null;
+          const thumb = item.subject.main_thumb ? `${API_BASE_URL}${item.subject.main_thumb}` : null;
           const isUnreadForMe = item.unread_count > 0;
           const isMineLast = item.last_message_is_mine === true;
           const isReadBySome = item.last_message_read === true;
@@ -182,7 +182,7 @@ export default function ChatsListScreen({ navigation }: Props) {
                   <Text style={styles.time}>{formatTime(item.last_message_at)}</Text>
                 </View>
                 <Text style={styles.hallLine} numberOfLines={1}>
-                  {item.hall?.name ?? '—'}
+                  {item.subject.name ?? '—'}
                 </Text>
                 <View style={styles.previewRow}>
                   {/* Галочки только для своих сообщений (как в Krisha/WhatsApp) */}
