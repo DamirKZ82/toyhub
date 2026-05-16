@@ -420,16 +420,6 @@ export default function ProviderFormScreen({ route, navigation }: Props) {
         </View>
       ) : null}
 
-      <Button
-        mode="contained"
-        onPress={submit}
-        loading={saving}
-        disabled={saving}
-        style={styles.submit}
-      >
-        {t('common.save')}
-      </Button>
-
       <View style={styles.photoSection}>
         <View style={styles.photoHeader}>
           <Text style={styles.label}>{t('owner.photos_label')}</Text>
@@ -484,6 +474,16 @@ export default function ProviderFormScreen({ route, navigation }: Props) {
           </ScrollView>
         )}
       </View>
+
+      <Button
+        mode="contained"
+        onPress={submit}
+        loading={saving}
+        disabled={saving}
+        style={styles.submit}
+      >
+        {t('common.save')}
+      </Button>
 
       {isEdit ? (
         <Button
