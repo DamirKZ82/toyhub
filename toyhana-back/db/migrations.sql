@@ -385,8 +385,10 @@ CREATE INDEX IF NOT EXISTS idx_chats_provider ON chats(provider_id);
 -- обычных UNIQUE-индекса (NULL'ы трактуются как различные, поэтому
 -- избранные-исполнители с hall_id=NULL не конфликтуют между собой).
 ALTER TABLE favorites ADD COLUMN IF NOT EXISTS provider_id INT REFERENCES providers(id);
-ALTER TABLE favorites ALTER COLUMN hall_id DROP NOT NULL;
+-- PK (user_id, hall_id) надо снять ДО DROP NOT NULL: колонку из первичного
+-- ключа Postgres не даёт сделать nullable (ошибка 42P16).
 ALTER TABLE favorites DROP CONSTRAINT IF EXISTS favorites_pkey;
+ALTER TABLE favorites ALTER COLUMN hall_id DROP NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_favorites_user_hall
     ON favorites(user_id, hall_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_favorites_user_provider
